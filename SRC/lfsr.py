@@ -111,17 +111,4 @@ def attack_lfsr(cipher_path: str, outh_path: str, know_header: bytes, L: int):
         with open(outh_path, "wb") as f:
             f.write(bits_to_bytes(plain_bits))
 
-            
-if __name__ == "__main__":
-    # 1. Creamos un archivo cifrado de prueba automáticamente
-    lfsr_emisor = LFSR([0, 2, 3, 4], [1, 0, 1, 1, 0, 0, 1, 0])
-    mensaje = b"CABECERA_SECRETA: Todo el ataque LFSR funciona perfecto."
-    bits_msg = bytes_to_bits(mensaje)
-    ks = lfsr_emisor.generate_keystream(len(bits_msg))
-    
-    with open("archivo_cifrado.bin", "wb") as f:
-        f.write(bits_to_bytes([m ^ k for m, k in zip(bits_msg, ks)]))
 
-    # 2. Ejecutamos tu ataque para clonarlo y descifrarlo
-    attack_lfsr("archivo_cifrado.bin", "archivo_descifrado.txt", b"CABECERA", L=8)
-    print("Listo! Revisa el archivo 'archivo_descifrado.txt' en tu carpeta SRC.")
