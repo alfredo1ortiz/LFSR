@@ -77,3 +77,51 @@ def break_lfsr(keystream_sample: list, L: int):
     c_vec = gaussian_elimination_gf2(M, v)
     taps = [i for i, val in enumerate(c_vec) if val == 1]
     return taps, c_vec
+
+def bytes_to_bits(data: bytes) -> list:
+    return [(b>>i) & 1 for b in data  for i in range(7,-1,-1)]
+
+def bits_to_bytes(bits:list) -> bytes:
+    r= bytearray()
+    for i in range (0,len(bits),8):
+        byte = 0
+        for bit in bits[i:i+8]:
+            byte = (byte<< 1) | bit
+        r.append(byte)
+    return bytes(r)
+
+def attack_lfsr(cipher_path: str, outh_path: str, know_header: bytes, L: int):
+    with open (cipher_path, "rb") as f:
+        cipher_bits= bytes_to_bits(f.read())
+
+        know_bits = bytes_to_bits(know_header)
+        if len(know_bits)<2 * L:
+            raise ValueError(f"se ocupan {2*L} bits conocidos")
+
+        keystream_muestra=[c^p for c, p in zip(cipher_bits[:2*L], know_bits[:2*L])]
+        taps, c_vec = break_lfsr(keystream_muestra, L)
+        print (f"Taps: {taps} y Vector c:{c_vec}")
+
+        init_state= keystream_muestra[:L][::-1]
+        cloned = LFSR(taps, init_state)
+
+        full_ks = cloned.generate_keystream(len(cipher_bits))
+        plain_bits=[c^k for c, k in zip(cipher_bits, full_ks)]
+
+        with open(outh_path, "wb") as f:
+            f.write(bits_to_bytes(plain_bits))
+
+            
+if __name__ == "__main__":
+    # 1. Creamos un archivo cifrado de prueba automáticamente
+    lfsr_emisor = LFSR([0, 2, 3, 4], [1, 0, 1, 1, 0, 0, 1, 0])
+    mensaje = b"CABECERA_SECRETA: Todo el ataque LFSR funciona perfecto."
+    bits_msg = bytes_to_bits(mensaje)
+    ks = lfsr_emisor.generate_keystream(len(bits_msg))
+    
+    with open("archivo_cifrado.bin", "wb") as f:
+        f.write(bits_to_bytes([m ^ k for m, k in zip(bits_msg, ks)]))
+
+    # 2. Ejecutamos tu ataque para clonarlo y descifrarlo
+    attack_lfsr("archivo_cifrado.bin", "archivo_descifrado.txt", b"CABECERA", L=8)
+    print("Listo! Revisa el archivo 'archivo_descifrado.txt' en tu carpeta SRC.")
