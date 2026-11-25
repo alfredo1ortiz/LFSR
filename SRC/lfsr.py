@@ -1,77 +1,79 @@
+class LFSR:
+    def __init__(self, taps: list, initial_state: list):
+        self.taps = taps
+        self.state = list(initial_state)
+        self.L = len(initial_state)
 
-class simuladorLFSR:
-    def __init__(self, semilla: int, mascara:int):
-        self.semilla=0
-        self.mascara=0
-        self.estado=0
-        self.grado=0
-        self.periodoM=0
+        if all(bit == 0 for bit in self.state):
+            raise ValueError("Error: El estado inicial no puede ser todo ceros (LFSR congelado).")
 
-        if mascara >=2 and semilla >= 0:
-            self.mascara = mascara
-            self.grado = mascara.bit_length()-1
-            self.periodoM=(1<<self.grado) -1
-            self.semilla=self._reducir_modulo(semilla)
-            self.estado = self.semilla
-        else:
-            print("esta mal en algo")
+    def clock(self) -> int:
+        feedback = 0
+        for tap in self.taps:
+            feedback ^= self.state[tap]
 
+        out = self.state[-1]
+        self.state = [feedback] + self.state[:-1]
+        return out
 
-    def _reducir_modulo(self, polinomio: int) -> int:
-        while polinomio > 0 and (polinomio.bit_length() -1 )>= self.grado:
-            desplazamiento = (polinomio.bit_length() -1) - self.grado
-            polinomio ^= (self.mascara << desplazamiento)
-        return polinomio
-    def reiniciar(self) -> None:
-        self.estado = self.semilla
+    def generate_keystream(self, length: int) -> list:
+        return [self.clock() for _ in range(length)]
 
-    def paso(self) -> int:
-        self.estado = self.estado<<1
-        bit_s= (self.estado >> self.grado) & 1
-        if bit_s == 1:
-            self.estado = self.estado ^ self.mascara
-        return bit_s
-
-    def validar_periodo_maximo(self)-> bool:
-        self. reiniciar()
-        if self.estado == 0:
-            print("alertaaa: El LFSR esta congelado en 0 desde el inicio")
-            return False
-        estados_vistos= {self.estado:0}
-        limite_pasos = (1 << self.grado)+1
-
-        for i in range(1,limite_pasos):
-            self.paso()
-
-            if self.estado==0:
-                print(f"Alerta:el LFSR se congelo con puros ceros en el paso {i}")
-                return False
-            if self.estado in estados_vistos:
-                periodo_real = i- estados_vistos[self.estado]
-                if periodo_real == self.periodoM:
-                    print(f"Alcanzo el periodo maximo({periodo_real} de {self.periodoM})")
-                    return True
-                else:
-                    print(f"No alcanzo el periodo maximo, solo se logro {periodo_real} de {self.periodoM}")
-                    return False
-        estados_vistos[self.estado]=i
-
-        return False
+    def validate_max_period(self) -> int:
+        initial = list(self.state)
+        period = 0
+        max_limit = (1 << self.L) - 1
+        while True:
+            self.clock()
+            period += 1
+            if self.state == initial or period > max_limit:
+                break
+        return period
 
 
+def build_hankel_matrix(keystream_sample: list, L: int):
+    if len(keystream_sample) < 2 * L:
+        raise ValueError(f"Se requieren al menos {2*L} bits de keystream.")
 
-if __name__ == "__main__":
-    lfsr1= simuladorLFSR(0b0001, 0b10011)
-    print("grado L:" ,lfsr1.grado)
-    print("Periodo maximo esperado:", lfsr1.periodoM)
-    print("estado inicial:", bin(lfsr1.estado))
+    M = []
+    for i in range(L):
+        M.append([keystream_sample[i + j] for j in range(L)])
 
-    if lfsr1.validar_periodo_maximo():
-        print ("LFSR valido de periodo maximo")
+    v = [keystream_sample[L + i] for i in range(L)]
+    return M, v
 
-    lfsr2 = simuladorLFSR(0b0001, 0b11111)
-    lfsr2.validar_periodo_maximo()
-    print()
 
-    lfsr3= simuladorLFSR(0b0001, 0b10000)
-    lfsr3.validar_periodo_maximo()
+def gaussian_elimination_gf2(M: list, v: list) -> list:
+    rows = len(M)
+    cols = len(M[0])
+
+    A = [M[i][:] + [v[i]] for i in range(rows)]
+
+    r = 0
+    for c in range(cols):
+        pivot = -1
+        for i in range(r, rows):
+            if A[i][c] == 1:
+                pivot = i
+                break
+        if pivot == -1:
+            continue
+
+        A[r], A[pivot] = A[pivot], A[r]
+
+        for i in range(rows):
+            if i != r and A[i][c] == 1:
+                for j in range(cols + 1):
+                    A[i][j] ^= A[r][j]
+        r += 1
+        if r == rows:
+            break
+
+    return [A[i][-1] for i in range(cols)]
+
+
+def break_lfsr(keystream_sample: list, L: int):
+    M, v = build_hankel_matrix(keystream_sample, L)
+    c_vec = gaussian_elimination_gf2(M, v)
+    taps = [i for i, val in enumerate(c_vec) if val == 1]
+    return taps, c_vec
