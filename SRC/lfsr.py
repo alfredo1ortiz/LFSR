@@ -75,7 +75,7 @@ def gaussian_elimination_gf2(M: list, v: list) -> list:
 def break_lfsr(keystream_sample: list, L: int):
     M, v = build_hankel_matrix(keystream_sample, L)
     c_vec = gaussian_elimination_gf2(M, v)
-    taps = [i for i, val in enumerate(c_vec) if val == 1]
+    taps = [L-1-i for i, val in enumerate(c_vec) if val == 1]
     return taps, c_vec
 
 def bytes_to_bits(data: bytes) -> list:
